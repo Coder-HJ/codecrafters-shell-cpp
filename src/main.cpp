@@ -4,32 +4,86 @@
 #include <algorithm>
 #include <sstream>
 
+#include <filesystem>
+#include <sys/stat.h>
+
 
 using namespace std;
 
-std::vector<std::string> splitString(const std::string& s, char delimiter) {
-    std::vector<std::string> tokens;
-    std::string token;
-    std::istringstream tokenStream(s);
-    while (std::getline(tokenStream, token, delimiter)) {
+vector<string> permissibleCommands = {"exit", "echo", "type"};
+string PATH = getenv("PATH");
+
+vector<string> splitString(const string& s, char delimiter) {
+    vector<string> tokens;
+    string token;
+    istringstream tokenStream(s);
+    while (getline(tokenStream, token, delimiter)) {
         tokens.push_back(token);
     }
     return tokens;
 }
 
+bool isExecutableFileInDir(const string& dir, const string& fileName) {
+    filesystem::path filePath = filesystem::path(dir) / fileName;
+    if (!::filesystem::exists(filePath) || !filesystem::is_regular_file(filePath)) {
+        return false;
+    }
+    struct stat sb;
+    if (stat(filePath.c_str(), &sb) == 0 && (sb.st_mode & S_IXUSR)) {
+        return true;
+    }
+    return false;
+}
+
+void executeEcho(vector<string> arguments) {
+    for (auto &arg: arguments) {
+        cout << arg << " ";
+    }
+    cout << endl;
+}
+
+void executeType(vector<string> arguments) {
+    for (auto &arg: arguments) {
+        if ( find(permissibleCommands.begin(), permissibleCommands.end(), arg) != permissibleCommands.end() ) {
+            cout << arg << " is a shell builtin" << endl;
+            continue;
+        }
+
+        // go through each directory in PATH variable
+        vector<string> dirs = splitString(PATH, ':');
+        bool commandFoundInPath = false;
+        for (auto &dir: dirs) {
+            if (isExecutableFileInDir(dir, arg)) {
+                string tempDir = dir;
+                if (!dir.empty() && dir.back() == '/') {
+                    tempDir.pop_back();
+                }
+                commandFoundInPath = true;
+                cout << arg << " is " << tempDir << "/" << arg << endl;
+                break;
+            }
+        }
+
+        if (commandFoundInPath) {
+            continue;
+        }
+
+        cout << arg << ": not found" << endl;
+    }
+}
+
 int main() {
-    // Flush after every std::cout / std:cerr
-    std::cout << std::unitbuf;
-    std::cerr << std::unitbuf;
+    // Flush after every cout / std:cerr
+    cout << unitbuf;
+    cerr << unitbuf;
 
-    vector<string> permissibleCommands = {"exit", "echo", "type"};
 
-    // Uncomment this block to pass the first stage
+    string input;
 
-    std::string input;
+
     while (true) {
-        std::cout << "$ ";
-        std::getline(std::cin, input);
+        cout << "$ ";
+        getline(cin, input);
 
         vector<string> tokens = splitString(input, ' ');
         if (tokens.empty()) continue;
@@ -52,20 +106,10 @@ int main() {
 
 
         if (command == "echo") {
-            for (int i=1; i<tokens.size(); i++) {
-                cout << tokens[i] << " ";
-            }
-            cout << endl;
+            executeEcho(arguments);
         }
         else if (command == "type") {
-            for (auto &arg: arguments) {
-                if ( find(permissibleCommands.begin(), permissibleCommands.end(), arg) != permissibleCommands.end() ) {
-                    cout << arg << " is a shell builtin" << endl;
-                }
-                else {
-                    cout << arg << ": not found" << endl;
-                }
-            }
+            executeType(arguments);
         }
         else {
             cout << input << ": command not found" << endl;
