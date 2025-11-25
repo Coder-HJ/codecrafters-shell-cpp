@@ -10,7 +10,7 @@ int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
-    vector<string> permissibleCommands;
+    vector<string> permissibleCommands = {"exit"};
 
     // Uncomment this block to pass the first stage
 
@@ -21,6 +21,10 @@ int main() {
 
         if (find(permissibleCommands.begin(), permissibleCommands.end(), input) == permissibleCommands.end()) {
             cout << input << ": command not found" << endl;
+        }
+
+        if (input == "exit") {
+            break;
         }
     }
 
