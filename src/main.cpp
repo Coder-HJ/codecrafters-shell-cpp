@@ -3,7 +3,8 @@
 #include <string>
 #include <algorithm>
 #include <sstream>
-
+#include <unistd.h>
+#include <sys/wait.h>
 #include <filesystem>
 #include <sys/stat.h>
 
@@ -35,51 +36,86 @@ bool isExecutableFileInDir(const string& dir, const string& fileName) {
     return false;
 }
 
-void executeEcho(vector<string> arguments) {
+void executeEcho(const vector<string>& arguments) {
     for (auto &arg: arguments) {
         cout << arg << " ";
     }
     cout << endl;
 }
 
-void executeType(vector<string> arguments) {
+// returns the absolute path of the program if found, else "";
+string programLocationInPATH(const string& program) {
+    // go through each directory in PATH variable
+    vector<string> dirs = splitString(PATH, ':');
+    for (auto &dir: dirs) {
+        if (isExecutableFileInDir(dir, program)) {
+            filesystem::path filePath = filesystem::path(dir) / program;
+            return filePath.string();
+        }
+    }
+
+    return "";
+}
+
+void executeType(const vector<string>& arguments) {
     for (auto &arg: arguments) {
         if ( find(permissibleCommands.begin(), permissibleCommands.end(), arg) != permissibleCommands.end() ) {
             cout << arg << " is a shell builtin" << endl;
-            continue;
         }
+        else {
+            string cmdLocation = programLocationInPATH(arg);
 
-        // go through each directory in PATH variable
-        vector<string> dirs = splitString(PATH, ':');
-        bool commandFoundInPath = false;
-        for (auto &dir: dirs) {
-            if (isExecutableFileInDir(dir, arg)) {
-                string tempDir = dir;
-                if (!dir.empty() && dir.back() == '/') {
-                    tempDir.pop_back();
-                }
-                commandFoundInPath = true;
-                cout << arg << " is " << tempDir << "/" << arg << endl;
-                break;
+            if (!cmdLocation.empty()) {
+                cout << arg << " is " << cmdLocation << endl;
+            }
+            else {
+                cout << arg << ": not found" << endl;
             }
         }
-
-        if (commandFoundInPath) {
-            continue;
-        }
-
-        cout << arg << ": not found" << endl;
     }
 }
+
+
+void executeProgram(const std::string& programLocation, const std::vector<std::string>& arguments) {
+    pid_t pid = fork();
+
+    if (pid == 0) {
+        std::filesystem::path pathObj(programLocation);
+        std::string programName = pathObj.filename().string();
+
+        // Child process
+        std::vector<char*> args;
+        args.push_back(const_cast<char*>(programName.c_str()));
+        for (const auto& arg : arguments) {
+            args.push_back(const_cast<char*>(arg.c_str()));
+        }
+        args.push_back(nullptr);
+
+        execv(programLocation.c_str(), args.data());
+        perror("execv failed");
+        _exit(1); // Exit child if execv fails
+    } else if (pid > 0) {
+        // Parent process
+        int status;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            // std::cout << "Child exited with status " << WEXITSTATUS(status) << std::endl;
+        } else {
+            // std::cout << "Child terminated abnormally" << std::endl;
+        }
+    } else {
+        // Fork failed
+        perror("fork failed");
+    }
+}
+
 
 int main() {
     // Flush after every cout / std:cerr
     cout << unitbuf;
     cerr << unitbuf;
 
-
     string input;
-
 
     while (true) {
         cout << "$ ";
@@ -88,32 +124,45 @@ int main() {
         vector<string> tokens = splitString(input, ' ');
         if (tokens.empty()) continue;
 
-        if (
-            find(permissibleCommands.begin(), permissibleCommands.end(), tokens[0]) == permissibleCommands.end()
-        )
-         {
-            cout << input << ": command not found" << endl;
-            continue;
-        }
-
-
-        if (input == "exit") {
-            break;
-        }
-
+        bool builtInCommandFound = true;
         const string& command = tokens[0];
         vector<string> arguments(tokens.begin() + 1, tokens.end());
 
 
-        if (command == "echo") {
-            executeEcho(arguments);
+        if (
+            find(permissibleCommands.begin(), permissibleCommands.end(), command) == permissibleCommands.end()
+        )
+         {
+            builtInCommandFound = false;
         }
-        else if (command == "type") {
-            executeType(arguments);
+
+        if (builtInCommandFound) {
+            if (input == "exit") {
+                break;
+            }
+
+            if (command == "echo") {
+                executeEcho(arguments);
+            }
+            else if (command == "type") {
+                executeType(arguments);
+            }
+            else {
+                cout << input << ": command not found" << endl;
+            }
         }
         else {
-            cout << input << ": command not found" << endl;
+            // searching for executable
+            string programLocation = programLocationInPATH(command);
+            if (!programLocation.empty()) {
+                executeProgram(programLocation, arguments);
+            }
+            else {
+                cout << input << ": command not found" << endl;
+            }
         }
+
+
     }
 
     return 0;
