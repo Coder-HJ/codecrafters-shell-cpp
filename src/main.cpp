@@ -11,7 +11,7 @@
 
 using namespace std;
 
-vector<string> permissibleCommands = {"exit", "echo", "type"};
+vector<string> permissibleCommands = {"exit", "echo", "type", "pwd"};
 string PATH = getenv("PATH");
 
 vector<string> splitString(const string& s, char delimiter) {
@@ -110,6 +110,16 @@ void executeProgram(const std::string& programLocation, const std::vector<std::s
 }
 
 
+void executePwd() {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+        std::cout << cwd << std::endl;
+    } else {
+        perror("getcwd failed");
+    }
+}
+
+
 int main() {
     // Flush after every cout / std:cerr
     cout << unitbuf;
@@ -136,7 +146,11 @@ int main() {
             builtInCommandFound = false;
         }
 
+        bool executeProgramInPath = true;
+
         if (builtInCommandFound) {
+            executeProgramInPath = false;
+
             if (input == "exit") {
                 break;
             }
@@ -147,11 +161,15 @@ int main() {
             else if (command == "type") {
                 executeType(arguments);
             }
+            else if (command == "pwd") {
+                executePwd();
+            }
             else {
                 cout << input << ": command not found" << endl;
             }
         }
-        else {
+
+        if (executeProgramInPath) {
             // searching for executable
             string programLocation = programLocationInPATH(command);
             if (!programLocation.empty()) {
