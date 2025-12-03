@@ -11,7 +11,7 @@
 
 using namespace std;
 
-vector<string> permissibleCommands = {"exit", "echo", "type", "pwd"};
+vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd"};
 string PATH = getenv("PATH");
 
 vector<string> splitString(const string& s, char delimiter) {
@@ -119,6 +119,22 @@ void executePwd() {
     }
 }
 
+void executeCd(const std::vector<std::string>& arguments) {
+    string goToPath = "";
+    if (arguments.empty() || arguments[0].empty()) {
+        goToPath = getenv("HOME");
+        // no path is given... move to $HOME
+    }
+    else {
+        goToPath = arguments[0];
+    }
+
+    if (chdir(goToPath.c_str()) != 0) {
+        cout << "cd: " << goToPath << ": No such file or directory" << endl;
+    }
+
+}
+
 
 int main() {
     // Flush after every cout / std:cerr
@@ -163,6 +179,9 @@ int main() {
             }
             else if (command == "pwd") {
                 executePwd();
+            }
+            else if (command == "cd") {
+                executeCd(arguments);
             }
             else {
                 cout << input << ": command not found" << endl;
