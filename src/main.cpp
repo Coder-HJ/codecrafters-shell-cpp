@@ -127,6 +127,9 @@ void executeCd(const std::vector<std::string>& arguments) {
     }
     else {
         goToPath = arguments[0];
+        if (goToPath == "~") {
+            goToPath = getenv("HOME");
+        }
     }
 
     if (chdir(goToPath.c_str()) != 0) {
