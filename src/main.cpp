@@ -26,37 +26,47 @@ vector<string> splitString(const string& s, char delimiter) {
 
 vector<string> fetchTokens(const string& s) {
     vector<string> tokens;
-    bool openingQuoteFound = false;
+    bool openingSingleQuoteFound = false;
+    bool openingDoubleQuoteFound = false;
     string runningArgument = "";
 
     for (auto &x: s) {
-        if (!openingQuoteFound) {
-            if (x != ' ') {
-                if (x == '\'') {
-                    openingQuoteFound = true;
-                }
-                else {
-                    runningArgument += string(1, x);
-                }
+
+        if (x == ' ') {
+            if (openingSingleQuoteFound || openingDoubleQuoteFound) {
+                // treat space as a normal character
+                runningArgument += string(1, x);
             }
             else {
+                // push back runningArgument to tokens
                 if (!runningArgument.empty()) {
                     tokens.push_back(runningArgument);
                     runningArgument = "";
                 }
             }
         }
-        else {
-            if (x == '\'') {
-                openingQuoteFound = false;
-            }
-            else {
+        else if (x == '\'') {
+            if (openingDoubleQuoteFound) {
+                // treat single quote as a normal character
                 runningArgument += string(1, x);
             }
+            else if (openingSingleQuoteFound) {
+                openingSingleQuoteFound = false;
+            }
+            else {
+                openingSingleQuoteFound = true;
+            }
+        }
+        else if (x == '"') {
+            openingDoubleQuoteFound = !openingDoubleQuoteFound;
+        }
+        else {
+            runningArgument += string(1, x);
         }
     }
 
-    if (openingQuoteFound) {
+
+    if (openingSingleQuoteFound || openingDoubleQuoteFound) {
         cout << "Invalid Input. No closing quote found...." << endl;
         exit(1);
     }
