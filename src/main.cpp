@@ -81,6 +81,9 @@ vector<string> fetchTokens(const string& s) {
                 runningArgument += string(1, x);
                 backSlashFound = false;
             }
+            else if (openingSingleQuoteFound) {
+                runningArgument += string(1, x);
+            }
             else {
                 openingDoubleQuoteFound = !openingDoubleQuoteFound;
             }
