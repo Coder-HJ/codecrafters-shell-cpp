@@ -24,6 +24,52 @@ vector<string> splitString(const string& s, char delimiter) {
     return tokens;
 }
 
+vector<string> fetchTokens(const string& s) {
+    vector<string> tokens;
+    bool openingQuoteFound = false;
+    string runningArgument = "";
+
+    for (auto &x: s) {
+        if (!openingQuoteFound) {
+            if (x != ' ') {
+                if (x == '\'') {
+                    openingQuoteFound = true;
+                }
+                else {
+                    runningArgument += string(1, x);
+                }
+            }
+            else {
+                if (!runningArgument.empty()) {
+                    tokens.push_back(runningArgument);
+                    runningArgument = "";
+                }
+            }
+        }
+        else {
+            if (x == '\'') {
+                openingQuoteFound = false;
+            }
+            else {
+                runningArgument += string(1, x);
+            }
+        }
+    }
+
+    if (openingQuoteFound) {
+        cout << "Invalid Input. No closing quote found...." << endl;
+        exit(1);
+    }
+
+    if (!runningArgument.empty()) {
+        tokens.push_back(runningArgument);
+        runningArgument = "";
+    }
+
+    return tokens;
+
+}
+
 bool isExecutableFileInDir(const string& dir, const string& fileName) {
     filesystem::path filePath = filesystem::path(dir) / fileName;
     if (!::filesystem::exists(filePath) || !filesystem::is_regular_file(filePath)) {
@@ -150,13 +196,12 @@ int main() {
         cout << "$ ";
         getline(cin, input);
 
-        vector<string> tokens = splitString(input, ' ');
+        vector<string> tokens = fetchTokens(input);
         if (tokens.empty()) continue;
 
         bool builtInCommandFound = true;
         const string& command = tokens[0];
         vector<string> arguments(tokens.begin() + 1, tokens.end());
-
 
         if (
             find(permissibleCommands.begin(), permissibleCommands.end(), command) == permissibleCommands.end()
