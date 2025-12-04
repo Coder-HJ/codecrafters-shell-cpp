@@ -28,12 +28,27 @@ vector<string> fetchTokens(const string& s) {
     vector<string> tokens;
     bool openingSingleQuoteFound = false;
     bool openingDoubleQuoteFound = false;
+    bool backSlashFound = false;
     string runningArgument = "";
 
     for (auto &x: s) {
-
-        if (x == ' ') {
-            if (openingSingleQuoteFound || openingDoubleQuoteFound) {
+        if (x == '\\') {
+            if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+                if (backSlashFound) {
+                    runningArgument += string(1, x);
+                }
+                backSlashFound = !backSlashFound;
+            }
+            else {
+                runningArgument += string(1, x);
+            }
+        }
+        else if (x == ' ') {
+            if (backSlashFound) {
+                runningArgument += string(1, x);
+                backSlashFound = false;
+            }
+            else if (openingSingleQuoteFound || openingDoubleQuoteFound) {
                 // treat space as a normal character
                 runningArgument += string(1, x);
             }
@@ -46,7 +61,11 @@ vector<string> fetchTokens(const string& s) {
             }
         }
         else if (x == '\'') {
-            if (openingDoubleQuoteFound) {
+            if (backSlashFound) {
+                runningArgument += string(1, x);
+                backSlashFound = false;
+            }
+            else if (openingDoubleQuoteFound) {
                 // treat single quote as a normal character
                 runningArgument += string(1, x);
             }
@@ -58,16 +77,28 @@ vector<string> fetchTokens(const string& s) {
             }
         }
         else if (x == '"') {
-            openingDoubleQuoteFound = !openingDoubleQuoteFound;
+            if (backSlashFound) {
+                runningArgument += string(1, x);
+                backSlashFound = false;
+            }
+            else {
+                openingDoubleQuoteFound = !openingDoubleQuoteFound;
+            }
         }
         else {
-            runningArgument += string(1, x);
+            if (backSlashFound) {
+                runningArgument += string(1, x);
+                backSlashFound = false;
+            }
+            else {
+                runningArgument += string(1, x);
+            }
         }
     }
 
 
-    if (openingSingleQuoteFound || openingDoubleQuoteFound) {
-        cout << "Invalid Input. No closing quote found...." << endl;
+    if (openingSingleQuoteFound || openingDoubleQuoteFound || backSlashFound) {
+        cout << "Invalid Input. No closing quote or backslash found...." << endl;
         exit(1);
     }
 
