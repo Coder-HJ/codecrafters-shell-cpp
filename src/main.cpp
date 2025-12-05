@@ -33,7 +33,7 @@ vector<string> fetchTokens(const string& s) {
 
     for (auto &x: s) {
         if (x == '\\') {
-            if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+            if ((!openingSingleQuoteFound && !openingDoubleQuoteFound) || (openingDoubleQuoteFound)) {
                 if (backSlashFound) {
                     runningArgument += string(1, x);
                 }
@@ -45,7 +45,12 @@ vector<string> fetchTokens(const string& s) {
         }
         else if (x == ' ') {
             if (backSlashFound) {
-                runningArgument += string(1, x);
+                if (openingDoubleQuoteFound) {
+                    runningArgument += "\\" + string(1, x);
+                }
+                else {
+                    runningArgument += string(1, x);
+                }
                 backSlashFound = false;
             }
             else if (openingSingleQuoteFound || openingDoubleQuoteFound) {
@@ -62,8 +67,15 @@ vector<string> fetchTokens(const string& s) {
         }
         else if (x == '\'') {
             if (backSlashFound) {
-                runningArgument += string(1, x);
+                if (openingDoubleQuoteFound) {
+                    runningArgument += "\\" + string(1, x);
+                }
+                else {
+                    runningArgument += string(1, x);
+                }
+
                 backSlashFound = false;
+
             }
             else if (openingDoubleQuoteFound) {
                 // treat single quote as a normal character
@@ -90,7 +102,13 @@ vector<string> fetchTokens(const string& s) {
         }
         else {
             if (backSlashFound) {
-                runningArgument += string(1, x);
+                if (openingDoubleQuoteFound) {
+                    runningArgument += "\\" + string(1, x);
+                }
+                else {
+                    runningArgument += string(1, x);
+                }
+
                 backSlashFound = false;
             }
             else {
@@ -241,6 +259,7 @@ int main() {
         getline(cin, input);
 
         vector<string> tokens = fetchTokens(input);
+
         if (tokens.empty()) continue;
 
         bool builtInCommandFound = true;
