@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <termios.h>
 #include <unistd.h>
 
 
@@ -30,6 +31,8 @@ typedef struct {
 } ParsedToken;
 
 vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd"};
+vector<string> commandSuggestions = {"exit", "echo"};
+
 string PATH = getenv("PATH");
 
 vector<string> splitString(const string& s, char delimiter) {
@@ -399,6 +402,47 @@ void executeCd(const std::vector<std::string>& arguments) {
 
 }
 
+void printTermios(const termios& t) {
+    std::cout << "c_iflag: " << t.c_iflag << std::endl;
+    std::cout << "c_oflag: " << t.c_oflag << std::endl;
+    std::cout << "c_cflag: " << t.c_cflag << std::endl;
+    std::cout << "c_lflag: " << t.c_lflag << std::endl;
+    // Print control characters
+    for (int i = 0; i < NCCS; ++i) {
+        std::cout << "c_cc[" << i << "]: " << (int)t.c_cc[i] << std::endl;
+    }
+}
+
+// A custom function to replicate getch() behavior
+int custom_getch() {
+    struct termios oldt, newt;
+    int ch;
+
+    // 1. Get the current terminal settings
+    // STDIN_FILENO means we are getting settings for standard input (keyboard)
+    tcgetattr(STDIN_FILENO, &oldt);
+
+    // 2. Copy the settings to a new structure
+    newt = oldt;
+
+    // 3. Modify the new settings:
+    //    ICANON disables canonical mode (line buffering, no Enter key needed)
+    //    ECHO disables character echoing (the key pressed won't show on screen)
+    newt.c_lflag &= ~(ICANON | ECHO);
+
+    // 4. Apply the new settings immediately (TCSANOW)
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    // 5. Read a single character from standard input
+    ch = getchar();
+
+    // 6. Restore the original terminal settings
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+
+    // 7. Return the read character
+    return ch;
+}
+
 
 int main() {
     // Flush after every cout / std:cerr
@@ -409,7 +453,33 @@ int main() {
 
     while (true) {
         cout << "$ ";
-        getline(cin, input);
+
+        string input = "";
+
+        char ch = custom_getch();
+        while (ch != '\n') {
+            if ( ch == '\t') {
+                // display suggestions
+                if (input == "ech") {
+                    input = "echo ";
+                    cout << "o ";
+                }
+                else if (input == "exi") {
+                    input = "exit";
+                    cout << "t ";
+                }
+            }
+            else {
+                cout << ch;
+                input += string(1, ch);
+            }
+
+            ch = custom_getch();
+        }
+        cout << endl;
+
+
+        // getline(cin, input);
 
         ParsedCommand parsedCommand = fetchTokens(input);
         vector<string> tokens = parsedCommand.tokens;
