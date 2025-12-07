@@ -14,9 +14,14 @@
 using namespace std;
 
 typedef struct {
+    string fileName;
+    string mode;
+} StreamRedirectionMetadata;
+
+typedef struct {
     vector<string> tokens;
-    string standardOutputFile;
-    string standardErrorFile;
+    StreamRedirectionMetadata standardOutputFile;
+    StreamRedirectionMetadata standardErrorFile;
 } ParsedCommand;
 
 typedef struct {
@@ -121,28 +126,56 @@ ParsedToken fetchNextToken(const string &s, int startIndex) {
         }
         else if ( s[i] == '>') {
             if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+
                 // not considering escape character before redirection operators as of now.
-                runningArgument = ">";
-                parsedToken.token = runningArgument;
-                parsedToken.endIndex = i+1;
+                if (i+1 < s.size() && s[i+1] == '>') {
+                    // append mode
+                    runningArgument = ">>";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+2;
+                }
+                else {
+                    runningArgument = ">";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+1;
+                }
+
                 return parsedToken;
             }
         }
         else if (i+1 < s.size() && s.substr(i, 2) == "1>") {
             if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
                 // not considering escape character before redirection operators as of now.
-                runningArgument = "1>";
-                parsedToken.token = runningArgument;
-                parsedToken.endIndex = i+2;
+                if (i+2 < s.size() && s[i+2] == '>') {
+                    // append mode
+                    runningArgument = "1>>";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+3;
+                }
+                else {
+                    runningArgument = "1>";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+2;
+                }
+
                 return parsedToken;
             }
         }
         else if (i+1 < s.size() && s.substr(i, 2) == "2>") {
             if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
                 // not considering escape character before redirection operators as of now.
-                runningArgument = "2>";
-                parsedToken.token = runningArgument;
-                parsedToken.endIndex = i+2;
+                if (i+2 < s.size() && s[i+2] == '>') {
+                    // append mode
+                    runningArgument = "2>>";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+3;
+                }
+                else {
+                    runningArgument = "2>";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+2;
+                }
+
                 return parsedToken;
             }
         }
@@ -191,7 +224,9 @@ ParsedCommand fetchTokens(const string& s) {
 
 
     bool redirectStdoutBit = false; // if this is set to true it means that the next token is the file where stdout would be redirected
+    string redirectStdoutMode = "";
     bool redirectStderrBit = false; // if this is set to true it means that the next token is the file where stderr would be redirected
+    string redirectStderrmode = "";
 
     int i = 0;
     while (i < s.size()) {
@@ -202,19 +237,37 @@ ParsedCommand fetchTokens(const string& s) {
         if (nextTokenValue == ">" || nextTokenValue == "1>") {
             redirectStdoutBit = true;
             redirectStderrBit = false;
+
+            redirectStdoutMode = "w";
+        }
+        else if (nextTokenValue == ">>" || nextTokenValue == "1>>") {
+            redirectStdoutBit = true;
+            redirectStderrBit = false;
+
+            redirectStdoutMode = "a";
         }
         else if (nextTokenValue == "2>") {
             redirectStdoutBit = false;
             redirectStderrBit = true;
+
+            redirectStderrmode = "w";
+        }
+        else if (nextTokenValue == "2>>") {
+            redirectStdoutBit = false;
+            redirectStderrBit = true;
+
+            redirectStderrmode = "a";
         }
         else {
             if (redirectStdoutBit) {
                 // nextTokenValue represents the stdout file
-                parsedCommand.standardOutputFile = nextTokenValue;
+                parsedCommand.standardOutputFile.fileName = nextTokenValue;
+                parsedCommand.standardOutputFile.mode = redirectStdoutMode;
             }
             else if (redirectStderrBit) {
                 // nextTokenValue represents the stderr file
-                parsedCommand.standardErrorFile = nextTokenValue;
+                parsedCommand.standardErrorFile.fileName = nextTokenValue;
+                parsedCommand.standardErrorFile.mode = redirectStderrmode;
             }
             else {
                 parsedCommand.tokens.push_back(nextTokenValue);
@@ -222,6 +275,8 @@ ParsedCommand fetchTokens(const string& s) {
 
             redirectStdoutBit = false;
             redirectStderrBit = false;
+            redirectStdoutMode = "";
+            redirectStderrmode = "";
         }
 
         i = nextToken.endIndex;
@@ -369,10 +424,22 @@ int main() {
         int default_stdout = dup(STDOUT_FILENO);
         int default_stderr = dup(STDERR_FILENO);
 
-        if (!parsedCommand.standardOutputFile.empty()) {
+        if (!parsedCommand.standardOutputFile.fileName.empty()) {
             // we need to point stdout to a file...
 
-            int fd = open(parsedCommand.standardOutputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int fd;
+
+            if (parsedCommand.standardOutputFile.mode == "w") {
+                fd = open(parsedCommand.standardOutputFile.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            }
+            else if (parsedCommand.standardOutputFile.mode == "a") {
+                fd = open(parsedCommand.standardOutputFile.fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+            }
+            else {
+                cerr << "Something went wrong...Invalid file mode" << endl;
+                exit(1);
+            }
+
             if (fd < 0) {
                 cerr << "Error while opening stdout file..." << endl;
                 exit(1);
@@ -384,10 +451,22 @@ int main() {
             close(fd);
         }
 
-        if (!parsedCommand.standardErrorFile.empty()) {
+        if (!parsedCommand.standardErrorFile.fileName.empty()) {
             // we need to point stdout to a file...
 
-            int fd = open(parsedCommand.standardErrorFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int fd;
+
+            if (parsedCommand.standardErrorFile.mode == "w") {
+                fd = open(parsedCommand.standardErrorFile.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            }
+            else if (parsedCommand.standardErrorFile.mode == "a") {
+                fd = open(parsedCommand.standardErrorFile.fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+            }
+            else {
+                cerr << "Something went wrong...Invalid file mode" << endl;
+                exit(1);
+            }
+
             if (fd < 0) {
                 cerr << "Error while opening stderr file..." << endl;
                 exit(1);
