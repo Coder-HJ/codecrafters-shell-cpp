@@ -7,9 +7,22 @@
 #include <sys/wait.h>
 #include <filesystem>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 
 using namespace std;
+
+typedef struct {
+    vector<string> tokens;
+    string standardOutputFile;
+    string standardErrorFile;
+} ParsedCommand;
+
+typedef struct {
+    string token;
+    int endIndex;
+} ParsedToken;
 
 vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd"};
 string PATH = getenv("PATH");
@@ -24,54 +37,60 @@ vector<string> splitString(const string& s, char delimiter) {
     return tokens;
 }
 
-vector<string> fetchTokens(const string& s) {
-    vector<string> tokens;
+// from s[startIndex....], fetches the first argument entity and returns it. @endIndex points to the position after the very last character of the argument.
+ParsedToken fetchNextToken(const string &s, int startIndex) {
+    int i = startIndex;
+    while (s[i] == ' ') i++;
+
+    string runningArgument = "";
     bool openingSingleQuoteFound = false;
     bool openingDoubleQuoteFound = false;
     bool backSlashFound = false;
-    string runningArgument = "";
+    ParsedToken parsedToken;
 
-    for (auto &x: s) {
-        if (x == '\\') {
+     while (i < s.size()){
+
+        if (s[i] == '\\') {
             if ((!openingSingleQuoteFound && !openingDoubleQuoteFound) || (openingDoubleQuoteFound)) {
                 if (backSlashFound) {
-                    runningArgument += string(1, x);
+                    runningArgument += string(1, s[i]);
                 }
                 backSlashFound = !backSlashFound;
             }
             else {
-                runningArgument += string(1, x);
+                runningArgument += string(1, s[i]);
             }
         }
-        else if (x == ' ') {
+        else if (s[i] == ' ') {
             if (backSlashFound) {
                 if (openingDoubleQuoteFound) {
-                    runningArgument += "\\" + string(1, x);
+                    runningArgument += "\\" + string(1, s[i]);
                 }
                 else {
-                    runningArgument += string(1, x);
+                    runningArgument += string(1, s[i]);
                 }
                 backSlashFound = false;
             }
             else if (openingSingleQuoteFound || openingDoubleQuoteFound) {
                 // treat space as a normal character
-                runningArgument += string(1, x);
+                runningArgument += string(1, s[i]);
             }
             else {
                 // push back runningArgument to tokens
                 if (!runningArgument.empty()) {
-                    tokens.push_back(runningArgument);
-                    runningArgument = "";
+                    parsedToken.token = runningArgument;
+                    parsedToken.endIndex = i+1;
+                    return parsedToken;
                 }
             }
         }
-        else if (x == '\'') {
+        else if (s[i] == '\'') {
             if (backSlashFound) {
                 if (openingDoubleQuoteFound) {
-                    runningArgument += "\\" + string(1, x);
+                    runningArgument += "\\" + string(1, s[i]);
                 }
                 else {
-                    runningArgument += string(1, x);
+                    runningArgument += string(1, s[i]);
                 }
 
                 backSlashFound = false;
@@ -79,7 +98,7 @@ vector<string> fetchTokens(const string& s) {
             }
             else if (openingDoubleQuoteFound) {
                 // treat single quote as a normal character
-                runningArgument += string(1, x);
+                runningArgument += string(1, s[i]);
             }
             else if (openingSingleQuoteFound) {
                 openingSingleQuoteFound = false;
@@ -88,33 +107,62 @@ vector<string> fetchTokens(const string& s) {
                 openingSingleQuoteFound = true;
             }
         }
-        else if (x == '"') {
+        else if (s[i] == '"') {
             if (backSlashFound) {
-                runningArgument += string(1, x);
+                runningArgument += string(1, s[i]);
                 backSlashFound = false;
             }
             else if (openingSingleQuoteFound) {
-                runningArgument += string(1, x);
+                runningArgument += string(1, s[i]);
             }
             else {
                 openingDoubleQuoteFound = !openingDoubleQuoteFound;
             }
         }
+        else if ( s[i] == '>') {
+            if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+                // not considering escape character before redirection operators as of now.
+                runningArgument = ">";
+                parsedToken.token = runningArgument;
+                parsedToken.endIndex = i+1;
+                return parsedToken;
+            }
+        }
+        else if (i+1 < s.size() && s.substr(i, 2) == "1>") {
+            if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+                // not considering escape character before redirection operators as of now.
+                runningArgument = "1>";
+                parsedToken.token = runningArgument;
+                parsedToken.endIndex = i+2;
+                return parsedToken;
+            }
+        }
+        else if (i+1 < s.size() && s.substr(i, 2) == "2>") {
+            if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+                // not considering escape character before redirection operators as of now.
+                runningArgument = "2>";
+                parsedToken.token = runningArgument;
+                parsedToken.endIndex = i+2;
+                return parsedToken;
+            }
+        }
         else {
             if (backSlashFound) {
                 if (openingDoubleQuoteFound) {
-                    runningArgument += "\\" + string(1, x);
+                    runningArgument += "\\" + string(1, s[i]);
                 }
                 else {
-                    runningArgument += string(1, x);
+                    runningArgument += string(1, s[i]);
                 }
 
                 backSlashFound = false;
             }
             else {
-                runningArgument += string(1, x);
+                runningArgument += string(1, s[i]);
             }
         }
+
+        i++;
     }
 
 
@@ -124,12 +172,62 @@ vector<string> fetchTokens(const string& s) {
     }
 
     if (!runningArgument.empty()) {
-        tokens.push_back(runningArgument);
-        runningArgument = "";
+        parsedToken.token = runningArgument;
+        parsedToken.endIndex = s.size();
+        return parsedToken;
     }
 
-    return tokens;
 
+    return parsedToken;
+
+}
+
+
+
+ParsedCommand fetchTokens(const string& s) {
+
+    ParsedCommand parsedCommand;
+    ParsedToken nextToken;
+
+
+    bool redirectStdoutBit = false; // if this is set to true it means that the next token is the file where stdout would be redirected
+    bool redirectStderrBit = false; // if this is set to true it means that the next token is the file where stderr would be redirected
+
+    int i = 0;
+    while (i < s.size()) {
+        nextToken = fetchNextToken(s, i);
+
+        string nextTokenValue = nextToken.token;
+
+        if (nextTokenValue == ">" || nextTokenValue == "1>") {
+            redirectStdoutBit = true;
+            redirectStderrBit = false;
+        }
+        else if (nextTokenValue == "2>") {
+            redirectStdoutBit = false;
+            redirectStderrBit = true;
+        }
+        else {
+            if (redirectStdoutBit) {
+                // nextTokenValue represents the stdout file
+                parsedCommand.standardOutputFile = nextTokenValue;
+            }
+            else if (redirectStderrBit) {
+                // nextTokenValue represents the stderr file
+                parsedCommand.standardErrorFile = nextTokenValue;
+            }
+            else {
+                parsedCommand.tokens.push_back(nextTokenValue);
+            }
+
+            redirectStdoutBit = false;
+            redirectStderrBit = false;
+        }
+
+        i = nextToken.endIndex;
+    }
+
+    return parsedCommand;
 }
 
 bool isExecutableFileInDir(const string& dir, const string& fileName) {
@@ -258,9 +356,49 @@ int main() {
         cout << "$ ";
         getline(cin, input);
 
-        vector<string> tokens = fetchTokens(input);
+        ParsedCommand parsedCommand = fetchTokens(input);
+        vector<string> tokens = parsedCommand.tokens;
+
 
         if (tokens.empty()) continue;
+
+        // for (auto &t: tokens) cout << "token - " << t << endl;
+        // cout << "standardOutputFile: " << parsedCommand.standardOutputFile << endl;
+        // cout << "standardErrorFile: " << parsedCommand.standardErrorFile << endl;
+
+        int default_stdout = dup(STDOUT_FILENO);
+        int default_stderr = dup(STDERR_FILENO);
+
+        if (!parsedCommand.standardOutputFile.empty()) {
+            // we need to point stdout to a file...
+
+            int fd = open(parsedCommand.standardOutputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                cerr << "Error while opening stdout file..." << endl;
+                exit(1);
+            }
+            if (dup2(fd, STDOUT_FILENO) < 0) {
+                cerr << "Error while dup2 on stdout file..." << endl;
+                exit(1);
+            }
+            close(fd);
+        }
+
+        if (!parsedCommand.standardErrorFile.empty()) {
+            // we need to point stdout to a file...
+
+            int fd = open(parsedCommand.standardErrorFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                cerr << "Error while opening stderr file..." << endl;
+                exit(1);
+            }
+            if (dup2(fd, STDOUT_FILENO) < 0) {
+                cerr << "Error while dup2 on stderr file..." << endl;
+                exit(1);
+            }
+            close(fd);
+        }
+
 
         bool builtInCommandFound = true;
         const string& command = tokens[0];
@@ -309,6 +447,13 @@ int main() {
                 cout << input << ": command not found" << endl;
             }
         }
+
+
+        dup2(default_stdout, STDOUT_FILENO);
+        close(default_stdout);
+
+        dup2(default_stderr, STDERR_FILENO);
+        close(default_stderr);
 
 
     }
