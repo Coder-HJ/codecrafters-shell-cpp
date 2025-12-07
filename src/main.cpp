@@ -458,7 +458,13 @@ int main() {
 
         char ch = custom_getch();
         while (ch != '\n') {
-            if ( ch == '\t') {
+            if (ch == 8 || ch == 127) { // backspace
+                if (!input.empty()) {
+                    input.pop_back();
+                    std::cout << "\b \b";   // \b (backspace): Moves the cursor one position left. (space): Overwrites the character at the cursor. \b (backspace): Moves the cursor back again.
+                }
+            }
+            else if ( ch == '\t') {
                 // display suggestions
                 if (input == "ech") {
                     input = "echo ";
@@ -467,6 +473,14 @@ int main() {
                 else if (input == "exi") {
                     input = "exit";
                     cout << "t ";
+                }
+                else if (input == "typ") {
+                    input = "type ";
+                    cout << "e ";
+                }
+                else {
+                    // no built in command present for autocompletion
+                    cout << '\a';
                 }
             }
             else {
