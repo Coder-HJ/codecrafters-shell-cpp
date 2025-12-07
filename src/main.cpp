@@ -392,7 +392,7 @@ int main() {
                 cerr << "Error while opening stderr file..." << endl;
                 exit(1);
             }
-            if (dup2(fd, STDOUT_FILENO) < 0) {
+            if (dup2(fd, STDERR_FILENO) < 0) {
                 cerr << "Error while dup2 on stderr file..." << endl;
                 exit(1);
             }
