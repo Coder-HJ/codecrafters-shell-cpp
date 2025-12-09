@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <termios.h>
-#include <unistd.h>
+#include "utils/Trie.cpp"
 
 
 using namespace std;
@@ -288,12 +288,14 @@ ParsedCommand fetchTokens(const string& s) {
     return parsedCommand;
 }
 
+
 bool isExecutableFileInDir(const string& dir, const string& fileName) {
     filesystem::path filePath = filesystem::path(dir) / fileName;
     if (!::filesystem::exists(filePath) || !filesystem::is_regular_file(filePath)) {
         return false;
     }
     struct stat sb;
+
     if (stat(filePath.c_str(), &sb) == 0 && (sb.st_mode & S_IXUSR)) {
         return true;
     }
@@ -307,10 +309,14 @@ void executeEcho(const vector<string>& arguments) {
     cout << endl;
 }
 
+vector<string> directoriesInPath() {
+    return splitString(PATH, ':');
+}
+
 // returns the absolute path of the program if found, else "";
 string programLocationInPATH(const string& program) {
     // go through each directory in PATH variable
-    vector<string> dirs = splitString(PATH, ':');
+    vector<string> dirs = directoriesInPath();
     for (auto &dir: dirs) {
         if (isExecutableFileInDir(dir, program)) {
             filesystem::path filePath = filesystem::path(dir) / program;
@@ -444,6 +450,85 @@ int custom_getch() {
 }
 
 
+
+vector<string> fetchAllExecutablesInPath() {
+    vector<string> filesInPath;
+    vector<string> dirs = directoriesInPath();
+
+    for (auto &dir: dirs) {
+        if (std::filesystem::exists(dir) && std::filesystem::is_directory(dir)) {
+            for (const auto& entry : filesystem::directory_iterator(dir)) {
+                const auto& path = entry.path();
+                if (access(path.c_str(), R_OK) == 0 && filesystem::is_regular_file(path)) {
+                    string fileName = path.filename().string();
+                    if (isExecutableFileInDir(dir, fileName)) {
+                        filesInPath.push_back(fileName);
+                    }
+                }
+            }
+        }
+    }
+
+    return filesInPath;
+}
+
+string collectInput() {
+    string input = "";
+    char ch = custom_getch();
+    while (ch != '\n') {
+        if (ch == 8 || ch == 127) { // backspace
+            if (!input.empty()) {
+                input.pop_back();
+                std::cout << "\b \b";   // \b (backspace): Moves the cursor one position left. (space): Overwrites the character at the cursor. \b (backspace): Moves the cursor back again.
+            }
+        }
+        else if ( ch == '\t') {
+            // display suggestions
+            if (input == "ech") {
+                input = "echo ";
+                cout << "o ";
+            }
+            else if (input == "exi") {
+                input = "exit";
+                cout << "t ";
+            }
+            else if (input == "typ") {
+                input = "type ";
+                cout << "e ";
+            }
+            else {
+                // no built in command present for autocompletion
+
+                vector<string> allFilesInPath = fetchAllExecutablesInPath();
+                Trie myTrie;
+                myTrie.add(allFilesInPath);
+                vector<string> foundExecutables = myTrie.getAllByPrefix(input);
+                if (foundExecutables.size() == 1 && input != foundExecutables[0]) {
+                    const string& suitableCommand = foundExecutables[0];
+                    for (int i=input.size(); i<suitableCommand.size(); i++) {
+                        cout << suitableCommand[i];
+                    }
+                    cout << " ";
+                    input = suitableCommand;
+                }
+                else {
+                    cout << '\a';
+                }
+            }
+        }
+        else {
+            cout << ch;
+            input += string(1, ch);
+        }
+
+        ch = custom_getch();
+    }
+    cout << endl;
+
+    return input;
+}
+
+
 int main() {
     // Flush after every cout / std:cerr
     cout << unitbuf;
@@ -451,47 +536,11 @@ int main() {
 
     string input;
 
+
     while (true) {
         cout << "$ ";
 
-        string input = "";
-
-        char ch = custom_getch();
-        while (ch != '\n') {
-            if (ch == 8 || ch == 127) { // backspace
-                if (!input.empty()) {
-                    input.pop_back();
-                    std::cout << "\b \b";   // \b (backspace): Moves the cursor one position left. (space): Overwrites the character at the cursor. \b (backspace): Moves the cursor back again.
-                }
-            }
-            else if ( ch == '\t') {
-                // display suggestions
-                if (input == "ech") {
-                    input = "echo ";
-                    cout << "o ";
-                }
-                else if (input == "exi") {
-                    input = "exit";
-                    cout << "t ";
-                }
-                else if (input == "typ") {
-                    input = "type ";
-                    cout << "e ";
-                }
-                else {
-                    // no built in command present for autocompletion
-                    cout << '\a';
-                }
-            }
-            else {
-                cout << ch;
-                input += string(1, ch);
-            }
-
-            ch = custom_getch();
-        }
-        cout << endl;
-
+        string input = collectInput();
 
         // getline(cin, input);
 
