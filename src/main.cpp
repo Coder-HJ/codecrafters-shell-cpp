@@ -475,6 +475,8 @@ vector<string> fetchAllExecutablesInPath() {
 string collectInput() {
     string input = "";
     char ch = custom_getch();
+    int tabPressedCount = 0;
+
     while (ch != '\n') {
         if (ch == 8 || ch == 127) { // backspace
             if (!input.empty()) {
@@ -497,22 +499,40 @@ string collectInput() {
                 cout << "e ";
             }
             else {
+                tabPressedCount++;
                 // no built in command present for autocompletion
 
                 vector<string> allFilesInPath = fetchAllExecutablesInPath();
                 Trie myTrie;
                 myTrie.add(allFilesInPath);
                 vector<string> foundExecutables = myTrie.getAllByPrefix(input);
-                if (foundExecutables.size() == 1 && input != foundExecutables[0]) {
-                    const string& suitableCommand = foundExecutables[0];
-                    for (int i=input.size(); i<suitableCommand.size(); i++) {
-                        cout << suitableCommand[i];
+                if (input.empty() || foundExecutables.empty()) {
+                    cout << '\a';
+                }
+                else if (foundExecutables.size() == 1) {
+                    if (input != foundExecutables[0]) {
+                        const string& suitableCommand = foundExecutables[0];
+                        for (int i=input.size(); i<suitableCommand.size(); i++) {
+                            cout << suitableCommand[i];
+                        }
+                        cout << " ";
+                        input = suitableCommand + " ";
                     }
-                    cout << " ";
-                    input = suitableCommand;
                 }
                 else {
-                    cout << '\a';
+                    if (tabPressedCount == 1) {
+                        cout << '\a';
+                    }
+                    else {
+                        // display all suggestions
+                        cout << endl;
+                        sort(foundExecutables.begin(), foundExecutables.end());
+                        for (auto &s: foundExecutables) {
+                            cout << s << " " << " ";
+                        }
+                        cout << endl;
+                        cout << "$ " << input;
+                    }
                 }
             }
         }
