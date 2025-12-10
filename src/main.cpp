@@ -472,6 +472,19 @@ vector<string> fetchAllExecutablesInPath() {
     return filesInPath;
 }
 
+string findLongestPrefix(vector<string> strs) {
+    if (strs.empty()) return "";
+    for (size_t i = 0; i < strs[0].size(); ++i) {
+        char c = strs[0][i];
+        for (size_t j = 1; j < strs.size(); ++j) {
+            if (i >= strs[j].size() || strs[j][i] != c)
+                return strs[0].substr(0, i);
+        }
+    }
+    return strs[0];
+}
+
+
 string collectInput() {
     string input = "";
     char ch = custom_getch();
@@ -508,6 +521,7 @@ string collectInput() {
                 vector<string> foundExecutables = myTrie.getAllByPrefix(input);
                 if (input.empty() || foundExecutables.empty()) {
                     cout << '\a';
+                    tabPressedCount = 0;
                 }
                 else if (foundExecutables.size() == 1) {
                     if (input != foundExecutables[0]) {
@@ -517,10 +531,24 @@ string collectInput() {
                         }
                         cout << " ";
                         input = suitableCommand + " ";
+                        tabPressedCount = 0;
+                    }
+                    else {
+                        cout << '\a';
+                        tabPressedCount = 0;
                     }
                 }
                 else {
-                    if (tabPressedCount == 1) {
+                    // multiple suggestions found
+                    string longestPrefix = findLongestPrefix(foundExecutables);
+                    if (longestPrefix.size() > input.size()) {
+                        for (int i=input.size(); i<longestPrefix.size(); i++) {
+                            cout << longestPrefix[i];
+                        }
+                        input = longestPrefix;
+                        tabPressedCount = 0;
+                    }
+                    else if (tabPressedCount == 1) {
                         cout << '\a';
                     }
                     else {
