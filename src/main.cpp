@@ -332,8 +332,11 @@ bool isExecutableFileInDir(const string& dir, const string& fileName) {
 }
 
 void executeEcho(const vector<string>& arguments) {
-    for (auto &arg: arguments) {
-        cout << arg << " ";
+    for (int i=0; i< arguments.size(); i++) {
+        cout << arguments[i];
+        if (i != arguments.size()-1) {
+            cout << " ";
+        }
     }
     cout << endl;
 }
