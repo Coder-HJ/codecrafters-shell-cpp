@@ -127,6 +127,17 @@ ParsedToken fetchNextToken(const string &s, int startIndex) {
                 openingDoubleQuoteFound = !openingDoubleQuoteFound;
             }
         }
+        else if ( s[i] == '|') {
+            if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
+
+                // not considering escape character before pipe operators as of now.
+                runningArgument = "|"; // assuming there would be a space "|", and ">" ...etc
+                parsedToken.token = runningArgument;
+                parsedToken.endIndex = i+1;
+
+                return parsedToken;
+            }
+        }
         else if ( s[i] == '>') {
             if (!openingSingleQuoteFound && !openingDoubleQuoteFound) {
 
@@ -220,7 +231,10 @@ ParsedToken fetchNextToken(const string &s, int startIndex) {
 
 
 
-ParsedCommand fetchTokens(const string& s) {
+vector<ParsedCommand> parseInput(const string& s) {
+    vector<ParsedCommand> parsedCommands;
+
+
 
     ParsedCommand parsedCommand;
     ParsedToken nextToken;
@@ -237,7 +251,18 @@ ParsedCommand fetchTokens(const string& s) {
 
         string nextTokenValue = nextToken.token;
 
-        if (nextTokenValue == ">" || nextTokenValue == "1>") {
+        if (nextTokenValue == "|") {
+            parsedCommands.push_back(parsedCommand);
+
+            // // this step is actually redundant, as the logic below already handles it
+            redirectStdoutBit = false;
+            redirectStdoutMode = "";
+            redirectStderrBit = false;
+            redirectStderrmode = "";
+
+            parsedCommand = ParsedCommand();
+        }
+        else if (nextTokenValue == ">" || nextTokenValue == "1>") {
             redirectStdoutBit = true;
             redirectStderrBit = false;
 
@@ -285,7 +310,11 @@ ParsedCommand fetchTokens(const string& s) {
         i = nextToken.endIndex;
     }
 
-    return parsedCommand;
+    if (!parsedCommand.tokens.empty()) {
+        parsedCommands.push_back(parsedCommand);
+    }
+
+    return parsedCommands;
 }
 
 
@@ -345,37 +374,45 @@ void executeType(const vector<string>& arguments) {
     }
 }
 
+void executeProgramWithoutFork(const std::string& programLocation, const std::vector<std::string>& arguments, bool doFork=false) {
+    std::filesystem::path pathObj(programLocation);
+    std::string programName = pathObj.filename().string();
 
-void executeProgram(const std::string& programLocation, const std::vector<std::string>& arguments) {
-    pid_t pid = fork();
+    // Child process
+    std::vector<char*> args;
+    args.push_back(const_cast<char*>(programName.c_str()));
+    for (const auto& arg : arguments) {
+        args.push_back(const_cast<char*>(arg.c_str()));
+    }
+    args.push_back(nullptr);
 
-    if (pid == 0) {
-        std::filesystem::path pathObj(programLocation);
-        std::string programName = pathObj.filename().string();
+    execv(programLocation.c_str(), args.data());
+    perror("execv failed");
+    _exit(1); // Exit child if execv fails
+}
 
-        // Child process
-        std::vector<char*> args;
-        args.push_back(const_cast<char*>(programName.c_str()));
-        for (const auto& arg : arguments) {
-            args.push_back(const_cast<char*>(arg.c_str()));
-        }
-        args.push_back(nullptr);
+void executeProgram(const std::string& programLocation, const std::vector<std::string>& arguments, bool doFork=false) {
+    if (doFork) {
+        pid_t pid = fork();
 
-        execv(programLocation.c_str(), args.data());
-        perror("execv failed");
-        _exit(1); // Exit child if execv fails
-    } else if (pid > 0) {
-        // Parent process
-        int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            // std::cout << "Child exited with status " << WEXITSTATUS(status) << std::endl;
+        if (pid == 0) {
+            executeProgramWithoutFork(programLocation, arguments);
+        } else if (pid > 0) {
+            // Parent process
+            int status;
+            waitpid(pid, &status, 0);
+            if (WIFEXITED(status)) {
+                // std::cout << "Child exited with status " << WEXITSTATUS(status) << std::endl;
+            } else {
+                // std::cout << "Child terminated abnormally" << std::endl;
+            }
         } else {
-            // std::cout << "Child terminated abnormally" << std::endl;
+            // Fork failed
+            perror("fork failed");
         }
-    } else {
-        // Fork failed
-        perror("fork failed");
+    }
+    else {
+        executeProgramWithoutFork(programLocation, arguments);
     }
 }
 
@@ -576,6 +613,125 @@ string collectInput() {
     return input;
 }
 
+// returns -1 if the REPL has to exit;
+int executeCommand(string input, vector<ParsedCommand> parsedCommands, int commandIndex, bool isForkedProcess=true) {
+    // child process
+    const ParsedCommand &parsedCommand = parsedCommands[commandIndex];
+    vector<string> tokens = parsedCommand.tokens;
+
+
+    if (tokens.empty()) return 0;
+
+    // for (auto &t: tokens) cout << "token - " << t << endl;
+    // cout << "standardOutputFile: " << parsedCommand.standardOutputFile << endl;
+    // cout << "standardErrorFile: " << parsedCommand.standardErrorFile << endl;
+
+    int default_stdout = dup(STDOUT_FILENO);
+    int default_stderr = dup(STDERR_FILENO);
+
+    if (!parsedCommand.standardOutputFile.fileName.empty()) {
+        // we need to point stdout to a file...
+
+        int fd;
+
+        if (parsedCommand.standardOutputFile.mode == "w") {
+            fd = open(parsedCommand.standardOutputFile.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+                      0644);
+        } else if (parsedCommand.standardOutputFile.mode == "a") {
+            fd = open(parsedCommand.standardOutputFile.fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND,
+                      0644);
+        } else {
+            cerr << "Something went wrong...Invalid file mode" << endl;
+            exit(1);
+        }
+
+        if (fd < 0) {
+            cerr << "Error while opening stdout file..." << endl;
+            exit(1);
+        }
+        if (dup2(fd, STDOUT_FILENO) < 0) {
+            cerr << "Error while dup2 on stdout file..." << endl;
+            exit(1);
+        }
+        close(fd);
+    }
+
+    if (!parsedCommand.standardErrorFile.fileName.empty()) {
+        // we need to point stdout to a file...
+
+        int fd;
+
+        if (parsedCommand.standardErrorFile.mode == "w") {
+            fd = open(parsedCommand.standardErrorFile.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        } else if (parsedCommand.standardErrorFile.mode == "a") {
+            fd = open(parsedCommand.standardErrorFile.fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        } else {
+            cerr << "Something went wrong...Invalid file mode" << endl;
+            exit(1);
+        }
+
+        if (fd < 0) {
+            cerr << "Error while opening stderr file..." << endl;
+            exit(1);
+        }
+        if (dup2(fd, STDERR_FILENO) < 0) {
+            cerr << "Error while dup2 on stderr file..." << endl;
+            exit(1);
+        }
+        close(fd);
+    }
+
+
+    bool builtInCommandFound = true;
+    const string &command = tokens[0];
+    vector<string> arguments(tokens.begin() + 1, tokens.end());
+
+    if (find(permissibleCommands.begin(), permissibleCommands.end(), command) == permissibleCommands.end()) {
+        builtInCommandFound = false;
+    }
+
+    bool executeProgramInPath = true;
+
+    if (builtInCommandFound) {
+        executeProgramInPath = false;
+
+        if (input == "exit") {
+            return -1;
+        }
+
+        if (command == "echo") {
+            executeEcho(arguments);
+        } else if (command == "type") {
+            executeType(arguments);
+        } else if (command == "pwd") {
+            executePwd();
+        } else if (command == "cd") {
+            executeCd(arguments);
+        } else {
+            cout << input << ": command not found" << endl;
+        }
+    }
+
+    if (executeProgramInPath) {
+        // searching for executable
+        string programLocation = programLocationInPATH(command);
+        if (!programLocation.empty()) {
+            executeProgram(programLocation, arguments, !isForkedProcess);
+        } else {
+            cout << input << ": command not found" << endl;
+        }
+    }
+
+
+    dup2(default_stdout, STDOUT_FILENO);
+    close(default_stdout);
+
+    dup2(default_stderr, STDERR_FILENO);
+    close(default_stderr);
+
+    return 0;
+}
+
 
 int main() {
     // Flush after every cout / std:cerr
@@ -592,128 +748,108 @@ int main() {
 
         // getline(cin, input);
 
-        ParsedCommand parsedCommand = fetchTokens(input);
-        vector<string> tokens = parsedCommand.tokens;
+        vector<ParsedCommand> parsedCommands = parseInput(input); // parsedCommands are connected via pipe
+        int totalCommands = parsedCommands.size();
 
-
-        if (tokens.empty()) continue;
-
-        // for (auto &t: tokens) cout << "token - " << t << endl;
-        // cout << "standardOutputFile: " << parsedCommand.standardOutputFile << endl;
-        // cout << "standardErrorFile: " << parsedCommand.standardErrorFile << endl;
-
-        int default_stdout = dup(STDOUT_FILENO);
-        int default_stderr = dup(STDERR_FILENO);
-
-        if (!parsedCommand.standardOutputFile.fileName.empty()) {
-            // we need to point stdout to a file...
-
-            int fd;
-
-            if (parsedCommand.standardOutputFile.mode == "w") {
-                fd = open(parsedCommand.standardOutputFile.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            }
-            else if (parsedCommand.standardOutputFile.mode == "a") {
-                fd = open(parsedCommand.standardOutputFile.fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-            }
-            else {
-                cerr << "Something went wrong...Invalid file mode" << endl;
-                exit(1);
-            }
-
-            if (fd < 0) {
-                cerr << "Error while opening stdout file..." << endl;
-                exit(1);
-            }
-            if (dup2(fd, STDOUT_FILENO) < 0) {
-                cerr << "Error while dup2 on stdout file..." << endl;
-                exit(1);
-            }
-            close(fd);
+        if (totalCommands == 0) {
+            continue;
         }
 
-        if (!parsedCommand.standardErrorFile.fileName.empty()) {
-            // we need to point stdout to a file...
-
-            int fd;
-
-            if (parsedCommand.standardErrorFile.mode == "w") {
-                fd = open(parsedCommand.standardErrorFile.fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            }
-            else if (parsedCommand.standardErrorFile.mode == "a") {
-                fd = open(parsedCommand.standardErrorFile.fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-            }
-            else {
-                cerr << "Something went wrong...Invalid file mode" << endl;
-                exit(1);
-            }
-
-            if (fd < 0) {
-                cerr << "Error while opening stderr file..." << endl;
-                exit(1);
-            }
-            if (dup2(fd, STDERR_FILENO) < 0) {
-                cerr << "Error while dup2 on stderr file..." << endl;
-                exit(1);
-            }
-            close(fd);
+        if(totalCommands == 1) {
+            if (executeCommand(input, parsedCommands, 0, false) == -1) break;
+            continue;
         }
 
+        // piped commands. run each of them in a child process;
 
-        bool builtInCommandFound = true;
-        const string& command = tokens[0];
-        vector<string> arguments(tokens.begin() + 1, tokens.end());
-
-        if (
-            find(permissibleCommands.begin(), permissibleCommands.end(), command) == permissibleCommands.end()
-        )
-         {
-            builtInCommandFound = false;
+        int totalPipes = (int) totalCommands - 1;
+        vector<vector<int>> pipes(totalPipes, vector<int>({0, 0}));
+        for (auto &p: pipes) {
+            pipe(p.data());
         }
+        /*
+         total commands = 3; total pipes = 2;
+          command 0:
+              stdin remains intact
+              stdout goes to pipes[0][1]
+          command 1:
+              stdin is pipes[0][0];
+              stdout goes to pipes[1][1]
+          command 2(last command):
+              stdin is pipes[1][0];
+              stdout remains intact
 
-        bool executeProgramInPath = true;
+        So, for command n,
 
-        if (builtInCommandFound) {
-            executeProgramInPath = false;
+            if(n==0) {
+                // stdin remains intact
+                // stdout goes to pipes[0][1];
+            }
+            else if(n < commands.size-1) {
+                // stdin is pipes[n-1][0];
+                // stdout is pipes[n][1];
+            }
+            if(n == commands.size()-1){
+                // stdin is pipes[n-1][0];
+                // stdout remains intact
+            }
+         */
 
-            if (input == "exit") {
-                break;
-            }
+        for (int subcommand = 0; subcommand < totalCommands; subcommand++) {
+            string subcommandName = parsedCommands[subcommand].tokens.front();
+            pid_t pid = fork();
+            if (pid == 0) {
 
-            if (command == "echo") {
-                executeEcho(arguments);
+                if (subcommand == 0) {
+                    // stdin remains intact;
+                    dup2(pipes[0][1], STDOUT_FILENO);
+                    close(pipes[0][0]);
+                }
+                else if (subcommand < totalCommands-1) {
+                    dup2(pipes[subcommand-1][0], STDIN_FILENO);
+                    dup2(pipes[subcommand][1], STDOUT_FILENO);
+                }
+                else {
+                    dup2(pipes[subcommand-1][0], STDIN_FILENO);
+                    // stdout remains intact
+                    close(pipes[subcommand-1][1]);
+
+
+                    // char buffer[30];
+                    // int bytesRead = read(pipes[subcommand-1][0], buffer, sizeof(buffer));
+                    // cout << "Child: Received message: " << string(buffer, bytesRead) << endl;
+
+                }
+                
+                executeCommand(input, parsedCommands, subcommand);
+
+                if (subcommand == 0) {
+                    close(pipes[0][1]);
+                }
+                else if (subcommand < totalCommands - 1) {
+                    close(pipes[subcommand-1][0]);
+                    close(pipes[subcommand][1]);
+                }
+                else {
+                    close(pipes[subcommand-1][0]);
+                }
+                exit(0);
             }
-            else if (command == "type") {
-                executeType(arguments);
-            }
-            else if (command == "pwd") {
-                executePwd();
-            }
-            else if (command == "cd") {
-                executeCd(arguments);
-            }
-            else {
-                cout << input << ": command not found" << endl;
+            if (pid < 0) {
+                perror("fork failed");
             }
         }
 
-        if (executeProgramInPath) {
-            // searching for executable
-            string programLocation = programLocationInPATH(command);
-            if (!programLocation.empty()) {
-                executeProgram(programLocation, arguments);
-            }
-            else {
-                cout << input << ": command not found" << endl;
-            }
+        // Closing the parent's pipe file descriptors ensures proper piping behavior, allowing EOF to be detected at the read end.
+        for (auto &p: pipes) {
+            close(p[0]);
+            close(p[1]);
         }
 
 
-        dup2(default_stdout, STDOUT_FILENO);
-        close(default_stdout);
-
-        dup2(default_stderr, STDERR_FILENO);
-        close(default_stderr);
+        for (int i = 0; i <totalCommands; ++i) {
+            wait(nullptr);
+        }
 
 
     }
