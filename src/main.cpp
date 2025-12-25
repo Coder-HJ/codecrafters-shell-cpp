@@ -618,6 +618,15 @@ string collectInput() {
     return input;
 }
 
+
+vector<string> commandHistory;
+
+void executeHistory() {
+    for (int i=0; i<commandHistory.size(); i++) {
+        cout << "    " << (i+1) << "  " << commandHistory[i] << endl;
+    }
+}
+
 // returns -1 if the REPL has to exit;
 int executeCommand(string input, vector<ParsedCommand> parsedCommands, int commandIndex, bool isForkedProcess=true) {
     // child process
@@ -712,7 +721,10 @@ int executeCommand(string input, vector<ParsedCommand> parsedCommands, int comma
             executePwd();
         } else if (command == "cd") {
             executeCd(arguments);
-        } else {
+        } else if (command == "history") {
+            executeHistory();
+        }
+        else {
             cout << input << ": command not found" << endl;
         }
     }
@@ -751,7 +763,8 @@ int main() {
 
         string input = collectInput();
 
-        // getline(cin, input);
+        commandHistory.push_back(input);
+
 
         vector<ParsedCommand> parsedCommands = parseInput(input); // parsedCommands are connected via pipe
         int totalCommands = parsedCommands.size();
