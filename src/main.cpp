@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <termios.h>
+#include <unordered_set>
+
 #include "utils/Trie.cpp"
 
 
@@ -803,25 +805,35 @@ int main() {
             pid_t pid = fork();
             if (pid == 0) {
 
+                // used to track all the used pipe file descriptors
+                unordered_map<int, unordered_set<int>> usedPipeFds;
+
                 if (subcommand == 0) {
                     // stdin remains intact;
                     dup2(pipes[0][1], STDOUT_FILENO);
-                    close(pipes[0][0]);
+                    usedPipeFds[0].insert(1);
                 }
                 else if (subcommand < totalCommands-1) {
                     dup2(pipes[subcommand-1][0], STDIN_FILENO);
                     dup2(pipes[subcommand][1], STDOUT_FILENO);
+
+                    usedPipeFds[subcommand-1].insert(0);
+                    usedPipeFds[subcommand].insert(1);
                 }
                 else {
                     dup2(pipes[subcommand-1][0], STDIN_FILENO);
+                    usedPipeFds[subcommand-1].insert(0);
                     // stdout remains intact
-                    close(pipes[subcommand-1][1]);
+                }
 
-
-                    // char buffer[30];
-                    // int bytesRead = read(pipes[subcommand-1][0], buffer, sizeof(buffer));
-                    // cout << "Child: Received message: " << string(buffer, bytesRead) << endl;
-
+                // close all the pipes this process won't interact with at all
+                for (int p=0; p<totalPipes; p++) {
+                    if (!usedPipeFds[p].count(0)) {
+                        close(pipes[p][0]);
+                    }
+                    if (!usedPipeFds[p].count(1)) {
+                        close(pipes[p][1]);
+                    }
                 }
                 
                 executeCommand(input, parsedCommands, subcommand);
