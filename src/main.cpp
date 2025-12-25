@@ -32,7 +32,7 @@ typedef struct {
     int endIndex;
 } ParsedToken;
 
-vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd"};
+vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd", "history"};
 vector<string> commandSuggestions = {"exit", "echo"};
 
 string PATH = getenv("PATH");
