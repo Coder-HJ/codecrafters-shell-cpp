@@ -621,8 +621,22 @@ string collectInput() {
 
 vector<string> commandHistory;
 
-void executeHistory() {
-    for (int i=0; i<commandHistory.size(); i++) {
+void executeHistory(const vector<string>& arguments) {
+    int historyCount = commandHistory.size();
+    if (arguments.size() == 1) {
+        try {
+            historyCount = stoi(arguments[0]);
+        } catch (const std::exception &) {
+            cout << "history: " << arguments[0] << ": numeric argument required" << endl;
+            return;
+        }
+    }
+    else if (arguments.size() > 1) {
+        cout << "history: too many arguments" << endl;
+        return;
+    }
+
+    for (int i=commandHistory.size()-historyCount; i<commandHistory.size(); i++) {
         cout << "    " << (i+1) << "  " << commandHistory[i] << endl;
     }
 }
@@ -722,7 +736,7 @@ int executeCommand(string input, vector<ParsedCommand> parsedCommands, int comma
         } else if (command == "cd") {
             executeCd(arguments);
         } else if (command == "history") {
-            executeHistory();
+            executeHistory(arguments);
         }
         else {
             cout << input << ": command not found" << endl;
