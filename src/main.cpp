@@ -859,7 +859,7 @@ int executeCommand(string input, vector<ParsedCommand> parsedCommands, int comma
 
         if (input == "exit") {
             if (HISTFILE) {
-                executeHistory({"-w", HISTFILE});
+                executeHistory({"-a", HISTFILE});
             }
             return -1;
         }
@@ -911,6 +911,7 @@ int main() {
     HISTFILE = getenv("HISTFILE");
     if (HISTFILE) {
         executeHistory({"-r", HISTFILE});
+        appendHistoryFrom = commandHistory.size();
     }
 
     while (true) {
