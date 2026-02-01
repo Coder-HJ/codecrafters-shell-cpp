@@ -694,26 +694,51 @@ void executeHistory(const vector<string>& arguments) {
             return;
         }
     }
-    else if (arguments.size() >= 1 && arguments[0] == "-r") {
-        if (arguments.size() == 1) {
-            cout << "history: too few arguments for 'history -r'" << endl;
+    else if (arguments.size() >= 1) {
+        if (arguments[0] == "-r") {
+            if (arguments.size() == 1) {
+                cout << "history: too few arguments for 'history -r'" << endl;
+                return;
+            }
+
+            string historyFilePath = arguments[1];
+
+            std::ifstream file(historyFilePath); // Replace with your file path
+            if (!file) {
+                std::cerr << "Failed to open file." << std::endl;
+                exit(1);
+            }
+
+            std::string line;
+            while (std::getline(file, line)) {
+                commandHistory.push_back(line);
+            }
+            file.close();
             return;
         }
+        else if (arguments[0] == "-w") {
+            if (arguments.size() == 1) {
+                cout << "history: too few arguments for 'history -w'" << endl;
+                return;
+            }
 
-        string historyFilePath = arguments[1];
+            string historyFilePath = arguments[1];
 
-        std::ifstream file(historyFilePath); // Replace with your file path
-        if (!file) {
-            std::cerr << "Failed to open file." << std::endl;
-            exit(0);
+            std::ofstream outFile(historyFilePath); // Creates file if it doesn't exist
+            if (!outFile) {
+                std::cerr << "Failed to open file." << std::endl;
+                // Handle error
+                exit(1);
+            }
+
+            for (const auto & i : commandHistory) {
+                outFile << i << endl;
+            }
+            outFile.close();
+
+            return;
+
         }
-
-        std::string line;
-        while (std::getline(file, line)) {
-            commandHistory.push_back(line);
-        }
-        file.close();
-        return;
     }
     else if (arguments.size() > 1) {
         cout << "history: too many arguments" << endl;
