@@ -14,7 +14,6 @@
 #include "utils/Trie.cpp"
 #include <fstream>
 
-
 using namespace std;
 
 typedef struct {
@@ -37,6 +36,7 @@ vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd", "hist
 vector<string> commandSuggestions = {"exit", "echo"};
 vector<string> commandHistory;
 int appendHistoryFrom = 0; // i.e append from 0...commandHistory.size() for command "history -a";
+char *HISTFILE = nullptr;
 
 
 string PATH = getenv("PATH");
@@ -858,6 +858,9 @@ int executeCommand(string input, vector<ParsedCommand> parsedCommands, int comma
         executeProgramInPath = false;
 
         if (input == "exit") {
+            if (HISTFILE) {
+                executeHistory({"-w", HISTFILE});
+            }
             return -1;
         }
 
@@ -905,9 +908,9 @@ int main() {
 
     string input;
 
-    char *histfile = getenv("HISTFILE");
-    if (histfile) {
-        executeHistory({"-r", histfile});
+    HISTFILE = getenv("HISTFILE");
+    if (HISTFILE) {
+        executeHistory({"-r", HISTFILE});
     }
 
     while (true) {
