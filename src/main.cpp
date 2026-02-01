@@ -36,6 +36,7 @@ typedef struct {
 vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd", "history"};
 vector<string> commandSuggestions = {"exit", "echo"};
 vector<string> commandHistory;
+int appendHistoryFrom = 0; // i.e append from 0...commandHistory.size() for command "history -a";
 
 
 string PATH = getenv("PATH");
@@ -738,6 +739,30 @@ void executeHistory(const vector<string>& arguments) {
 
             return;
 
+        }
+        else if (arguments[0] == "-a") {
+            if (arguments.size() == 1) {
+                cout << "history: too few arguments for 'history -a'" << endl;
+                return;
+            }
+
+            string historyFilePath = arguments[1];
+
+            std::ofstream outFile(historyFilePath, std::ios::app); // Creates file if it doesn't exist
+            if (!outFile) {
+                std::cerr << "Failed to open file." << std::endl;
+                // Handle error
+                exit(1);
+            }
+
+            for (int i=appendHistoryFrom; i<commandHistory.size(); i++) {
+                outFile << commandHistory[i] << endl;
+            }
+            outFile.close();
+            
+            appendHistoryFrom = commandHistory.size();
+
+            return;
         }
     }
     else if (arguments.size() > 1) {
