@@ -759,7 +759,7 @@ void executeHistory(const vector<string>& arguments) {
                 outFile << commandHistory[i] << endl;
             }
             outFile.close();
-            
+
             appendHistoryFrom = commandHistory.size();
 
             return;
@@ -905,6 +905,10 @@ int main() {
 
     string input;
 
+    char *histfile = getenv("HISTFILE");
+    if (histfile) {
+        executeHistory({"-r", histfile});
+    }
 
     while (true) {
         cout << "$ ";
