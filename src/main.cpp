@@ -34,6 +34,8 @@ typedef struct {
 
 vector<string> permissibleCommands = {"exit", "echo", "type", "pwd", "cd", "history"};
 vector<string> commandSuggestions = {"exit", "echo"};
+vector<string> commandHistory;
+
 
 string PATH = getenv("PATH");
 
@@ -532,11 +534,13 @@ string collectInput() {
     char ch = custom_getch();
     int tabPressedCount = 0;
 
+    int arrowCommandHistoryIndex  = 0;
+
     while (ch != '\n') {
         if (ch == 8 || ch == 127) { // backspace
             if (!input.empty()) {
                 input.pop_back();
-                std::cout << "\b \b";   // \b (backspace): Moves the cursor one position left. (space): Overwrites the character at the cursor. \b (backspace): Moves the cursor back again.
+                cout << "\b \b";   // \b (backspace): Moves the cursor one position left. (space): Overwrites the character at the cursor. \b (backspace): Moves the cursor back again.
             }
         }
         else if ( ch == '\t') {
@@ -606,6 +610,52 @@ string collectInput() {
                 }
             }
         }
+        else if (int(ch) == 27) {
+            // Escape sequence : We'd be handling only up arrow and down arrow;
+            char escapeSequenceSecondByte = custom_getch();
+            char escapeSequenceThirdByte = custom_getch();
+
+            if (escapeSequenceSecondByte == '[' && escapeSequenceThirdByte == 'A') {
+                // upper arrow key pressed
+                arrowCommandHistoryIndex++;
+                if (arrowCommandHistoryIndex > commandHistory.size()) {
+                    arrowCommandHistoryIndex = 1;
+                }
+
+                for (int z=0; z<input.size(); z++) {
+                    cout << "\b \b";
+                }
+
+                if (!commandHistory.empty()) {
+                    input = commandHistory[commandHistory.size() - arrowCommandHistoryIndex];
+                    cout << input;
+                }
+                else {
+                    // beep
+                    cout << '\a';
+                }
+            }
+            else if (escapeSequenceSecondByte == '[' && escapeSequenceThirdByte == 'B') {
+                // lower arrow key pressed
+                arrowCommandHistoryIndex--;
+                if (arrowCommandHistoryIndex <= 0) {
+                    arrowCommandHistoryIndex = commandHistory.size();
+                }
+
+                for (int z=0; z<input.size(); z++) {
+                    cout << "\b \b";
+                }
+
+                if (!commandHistory.empty()) {
+                    input = commandHistory[commandHistory.size() - arrowCommandHistoryIndex];
+                    cout << input;
+                }
+                else {
+                    // beep
+                    cout << '\a';
+                }
+            }
+        }
         else {
             cout << ch;
             input += string(1, ch);
@@ -619,7 +669,6 @@ string collectInput() {
 }
 
 
-vector<string> commandHistory;
 
 void executeHistory(const vector<string>& arguments) {
     int historyCount = commandHistory.size();
@@ -883,6 +932,17 @@ int main() {
         }
 
         // Closing the parent's pipe file descriptors ensures proper piping behavior, allowing EOF to be detected at the read end.
+        /*
+            When using pipes for inter-process communication, each pipe has a read end and a write end. For a process reading from a pipe to detect that no more data will come (i.e., to receive EOF), all write ends of that pipe must be closed.
+            If the parent process keeps any write end open, the reader (child process) will block, waiting for more data, even if all other writers have finished. This can cause deadlocks or processes hanging indefinitely.
+            By closing unused pipe ends in the parent:
+            Data flows only between the intended processes.
+            EOF is delivered correctly when all writers are done.
+            Each process can synchronize: a reader knows when the writer is finished, and can exit or process the data accordingly.
+            This ensures that piped commands (like ls | grep foo | wc -l) work as expected, with each command receiving input and output at the right time, and processes terminating properly when their input is exhausted.
+
+            Most programs (like grep, wc, or a while(read(...)) loop) are designed to keep reading until they see an EOF (End of File).
+        */
         for (auto &p: pipes) {
             close(p[0]);
             close(p[1]);
