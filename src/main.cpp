@@ -12,6 +12,7 @@
 #include <unordered_set>
 
 #include "utils/Trie.cpp"
+#include <fstream>
 
 
 using namespace std;
@@ -669,16 +670,50 @@ string collectInput() {
 }
 
 
+bool isInteger(const std::string& s) {
+    if (s.empty()) return false;
+    size_t idx = 0;
+    try {
+        std::stoi(s, &idx);
+        return idx == s.size();
+    } catch (...) {
+        return false;
+    }
+}
+
+
 
 void executeHistory(const vector<string>& arguments) {
     int historyCount = commandHistory.size();
-    if (arguments.size() == 1) {
+
+    if (arguments.size() == 1 && isInteger(arguments[0])) {
         try {
             historyCount = stoi(arguments[0]);
         } catch (const std::exception &) {
             cout << "history: " << arguments[0] << ": numeric argument required" << endl;
             return;
         }
+    }
+    else if (arguments.size() >= 1 && arguments[0] == "-r") {
+        if (arguments.size() == 1) {
+            cout << "history: too few arguments for 'history -r'" << endl;
+            return;
+        }
+
+        string historyFilePath = arguments[1];
+
+        std::ifstream file(historyFilePath); // Replace with your file path
+        if (!file) {
+            std::cerr << "Failed to open file." << std::endl;
+            exit(0);
+        }
+
+        std::string line;
+        while (std::getline(file, line)) {
+            commandHistory.push_back(line);
+        }
+        file.close();
+        return;
     }
     else if (arguments.size() > 1) {
         cout << "history: too many arguments" << endl;
